@@ -1,0 +1,22 @@
+ name: helpdesk-openenv
+ version: 0.1.0
+ description: >
+   A real-world environment that simulates an IT helpdesk workflow: understanding a user ticket,
+   asking clarifying questions, selecting priority, routing to the correct team, and drafting a response
+   under policy + SLA constraints.
+ entrypoint: helpdesk_openenv.env:HelpdeskEnv
+ tasks:
+   - id: triage_easy
+     difficulty: easy
+     description: Classify priority and route a straightforward ticket.
+   - id: triage_medium
+     difficulty: medium
+     description: Handle missing details by asking 1-2 clarifying questions, then route + set priority.
+   - id: triage_hard
+     difficulty: hard
+     description: Draft a compliant response and route correctly with conflicting constraints.
+ observation_model: helpdesk_openenv.models:Observation
+ action_model: helpdesk_openenv.models:Action
+ reward_model: helpdesk_openenv.models:Reward
+ state_model: helpdesk_openenv.models:EnvState
+ 
