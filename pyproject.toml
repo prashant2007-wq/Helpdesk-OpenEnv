@@ -13,11 +13,13 @@
    "gradio>=4.44.0",
   "uvicorn>=0.27.0",
   "fastapi>=0.100.0",
+  "openenv-core>=0.2.0",
 ]
 
 [project.scripts]
 baseline = "helpdesk_openenv.cli.baseline:main"
 validate_openenv = "helpdesk_openenv.cli.validate:main"
+server = "server.app:app"
 
 [build-system]
 requires = ["hatchling>=1.24.2"]
