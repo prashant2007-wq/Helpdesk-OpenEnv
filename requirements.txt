@@ -6,4 +6,5 @@ tenacity>=8.3.0
 gradio==4.44.0
 huggingface_hub<0.30
 uvicorn>=0.27.0
-fastapi>=0.100.0
+fastapi<1.0.0
+starlette<1.0.0
