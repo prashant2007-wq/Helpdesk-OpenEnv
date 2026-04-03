@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 
 import gradio as gr
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 from helpdesk_openenv.env import HelpdeskEnv
 from helpdesk_openenv.models import Action
@@ -64,5 +66,52 @@ def build_demo() -> gr.Blocks:
     return demo
 
 
+# Global environment instance for API endpoints
+_env_instance = HelpdeskEnv()
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Helpdesk OpenEnv")
+
+    @app.get("/health")
+    def health():
+        return JSONResponse({"status": "ok", "message": "Service is running"}, status_code=200)
+
+    @app.post("/reset")
+    def reset(task_id: str = "triage_easy"):
+        global _env_instance
+        try:
+            obs = _env_instance.reset(task_id)
+            return JSONResponse({"status": "ok", "observation": obs.model_dump()}, status_code=200)
+        except Exception as e:
+            return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+
+    @app.post("/step")
+    def step(action: dict):
+        global _env_instance
+        try:
+            obs, rew = _env_instance.step(action)
+            return JSONResponse(
+                {"status": "ok", "observation": obs.model_dump(), "reward": rew.model_dump()}, status_code=200
+            )
+        except Exception as e:
+            return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+
+    @app.get("/state")
+    def state():
+        try:
+            env_state = _env_instance.state()
+            return JSONResponse({"status": "ok", "state": env_state.model_dump()}, status_code=200)
+        except Exception as e:
+            return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+
+    # Mount Gradio app
+    demo = build_demo()
+    app = gr.mount_gradio_app(app, demo, path="/")
+
+    return app
+
+
 if __name__ == "__main__":
-    build_demo().launch(server_name="0.0.0.0", server_port=7860)
+    import uvicorn
+    uvicorn.run(create_app(), host="0.0.0.0", port=7860)
