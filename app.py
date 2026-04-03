@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 
 import gradio as gr
 from fastapi import FastAPI
 from fastapi import Body
 from fastapi.responses import JSONResponse
+
+_SRC_DIR = Path(__file__).resolve().parent / "src"
+if _SRC_DIR.exists():
+    sys.path.insert(0, str(_SRC_DIR))
 
 from helpdesk_openenv.env import HelpdeskEnv
 from helpdesk_openenv.models import Action

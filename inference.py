@@ -13,12 +13,18 @@ from __future__ import annotations
 import json
 import os
 import random
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 from openai import OpenAI
 from pydantic import TypeAdapter
+
+_SRC_DIR = Path(__file__).resolve().parent / "src"
+if _SRC_DIR.exists():
+    sys.path.insert(0, str(_SRC_DIR))
 
 from helpdesk_openenv.env import HelpdeskEnv
 from helpdesk_openenv.models import Action
