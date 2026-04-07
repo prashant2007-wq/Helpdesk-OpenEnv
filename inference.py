@@ -77,87 +77,106 @@ def _obs_to_prompt(obs: Dict[str, Any]) -> str:
 
 
 def _call_model(client: OpenAI, model: str, prompt: str) -> str:
-    resp = client.chat.completions.create(
-        model=model,
-        temperature=0.0,
-        messages=[
-            {"role": "system", "content": _system_prompt()},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    return resp.choices[0].message.content or ""
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            temperature=0.0,
+            messages=[
+                {"role": "system", "content": _system_prompt()},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        return resp.choices[0].message.content or ""
+    except Exception as e:
+        print(json.dumps({"event": "ERROR", "error": f"API call failed: {str(e)}"}, sort_keys=True))
+        raise
 
 
 def _parse_action(text: str) -> Action:
-    text = text.strip()
-    # Best-effort: if model wraps JSON in markdown fences, strip them deterministically.
-    if text.startswith("```"):
-        text = text.strip("`")
-        text = text.replace("json", "", 1).strip()
-    data = json.loads(text)
-    return TypeAdapter(Action).validate_python(data)
+    try:
+        text = text.strip()
+        # Best-effort: if model wraps JSON in markdown fences, strip them deterministically.
+        if text.startswith("```"):
+            text = text.strip("`")
+            text = text.replace("json", "", 1).strip()
+        data = json.loads(text)
+        return TypeAdapter(Action).validate_python(data)
+    except json.JSONDecodeError as e:
+        print(json.dumps({"event": "ERROR", "error": f"JSON parse failed: {str(e)}, text: {text[:100]}"}, sort_keys=True))
+        raise
+    except Exception as e:
+        print(json.dumps({"event": "ERROR", "error": f"Action validation failed: {str(e)}"}, sort_keys=True))
+        raise
 
 
 def run_task(client: OpenAI, model: str, task_id: str, seed: int = 7) -> RunResult:
-    _seed_everything(seed)
-    env = HelpdeskEnv()
-    obs = env.reset(task_id=task_id)
+    try:
+        _seed_everything(seed)
+        env = HelpdeskEnv()
+        obs = env.reset(task_id=task_id)
 
-    final_score: Optional[float] = None
-    steps = 0
+        final_score: Optional[float] = None
+        steps = 0
 
-    while True:
-        print(json.dumps({"event": "STEP", "task_id": task_id, "step": steps}, sort_keys=True))
-        prompt = _obs_to_prompt(obs.model_dump())
-        raw = _call_model(client, model, prompt)
-        action = _parse_action(raw)
-        obs, rew = env.step(action)
-        steps += 1
+        while True:
+            print(json.dumps({"event": "STEP", "task_id": task_id, "step": steps}, sort_keys=True))
+            prompt = _obs_to_prompt(obs.model_dump())
+            raw = _call_model(client, model, prompt)
+            action = _parse_action(raw)
+            obs, rew = env.step(action)
+            steps += 1
 
-        if rew.done:
-            final_score = float(rew.info.get("final_score", "0.0"))
-            break
+            if rew.done:
+                final_score = float(rew.info.get("final_score", "0.0"))
+                break
 
-        if steps > 32:
-            # Safety stop; shouldn't happen.
-            obs, rew = env.step(Action(submit=True))
-            final_score = float(rew.info.get("final_score", "0.0"))
-            break
+            if steps > 32:
+                # Safety stop; shouldn't happen.
+                obs, rew = env.step(Action(submit=True))
+                final_score = float(rew.info.get("final_score", "0.0"))
+                break
 
-    return RunResult(task_id=task_id, final_score=final_score or 0.0, steps=steps)
+        return RunResult(task_id=task_id, final_score=final_score or 0.0, steps=steps)
+    except Exception as e:
+        print(json.dumps({"event": "ERROR", "task_id": task_id, "error": f"Task failed: {str(e)}"}, sort_keys=True))
+        raise
 
 
 def main() -> None:
-    # Load environment variables
-    api_base_url = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
-    model_name = os.environ.get("MODEL_NAME", "gpt-4o-mini")
-    hf_token = os.environ.get("HF_TOKEN")
-    
-    # Get API key (support both OPENAI_API_KEY and HF_TOKEN as fallback)
-    api_key = os.environ.get("OPENAI_API_KEY") or hf_token
-    if not api_key:
-        raise RuntimeError(
-            "Missing API credentials. Please set either OPENAI_API_KEY or HF_TOKEN environment variable."
-        )
+    try:
+        # Load environment variables
+        api_base_url = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
+        model_name = os.environ.get("MODEL_NAME", "gpt-4o-mini")
+        hf_token = os.environ.get("HF_TOKEN")
+        
+        # Get API key (support both OPENAI_API_KEY and HF_TOKEN as fallback)
+        api_key = os.environ.get("OPENAI_API_KEY") or hf_token
+        if not api_key:
+            raise RuntimeError(
+                "Missing API credentials. Please set either OPENAI_API_KEY or HF_TOKEN environment variable."
+            )
 
-    print(json.dumps({"event": "START", "api_base_url": api_base_url, "model": model_name}, sort_keys=True))
+        print(json.dumps({"event": "START", "api_base_url": api_base_url, "model": model_name}, sort_keys=True))
 
-    # Initialize OpenAI client with custom base URL if provided
-    client = OpenAI(api_key=api_key, base_url=api_base_url)
+        # Initialize OpenAI client with custom base URL if provided
+        client = OpenAI(api_key=api_key, base_url=api_base_url)
 
-    tasks = ["triage_easy", "triage_medium", "triage_hard"]
-    results = [run_task(client, model_name, t) for t in tasks]
+        tasks = ["triage_easy", "triage_medium", "triage_hard"]
+        results = [run_task(client, model_name, t) for t in tasks]
 
-    out = {
-        "model": model_name,
-        "api_base_url": api_base_url,
-        "results": [
-            {"task_id": r.task_id, "final_score": r.final_score, "steps": r.steps} for r in results
-        ],
-        "mean_score": float(np.mean([r.final_score for r in results])),
-    }
-    print(json.dumps({"event": "END"}, sort_keys=True))
-    print(json.dumps(out, indent=2, sort_keys=True))
+        out = {
+            "model": model_name,
+            "api_base_url": api_base_url,
+            "results": [
+                {"task_id": r.task_id, "final_score": r.final_score, "steps": r.steps} for r in results
+            ],
+            "mean_score": float(np.mean([r.final_score for r in results])),
+        }
+        print(json.dumps({"event": "END"}, sort_keys=True))
+        print(json.dumps(out, indent=2, sort_keys=True))
+    except Exception as e:
+        print(json.dumps({"event": "FATAL_ERROR", "error": str(e)}, sort_keys=True), file=sys.stderr)
+        raise
 
 
 if __name__ == "__main__":
