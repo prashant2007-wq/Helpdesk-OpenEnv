@@ -16,8 +16,8 @@ pinned: false
 
  | | |
  | --- | --- |
- | **Source code (GitHub)** | `https://github.com/<YOUR_USERNAME>/<YOUR_REPO>` |
- | **Live demo (Hugging Face Space)** | `https://huggingface.co/spaces/<YOUR_USERNAME_OR_ORG>/<YOUR_SPACE_NAME>` |
+ | **Source code (GitHub)** | `https://github.com/prashant2007-wq/Helpdesk-OpenEnv>` |
+ | **Live demo (Hugging Face Space)** | `https://huggingface.co/spaces/praxxnnt06/helpdesk-openenv` |
 
  **How to get the GitHub URL**
 

@@ -85,12 +85,9 @@ def create_app() -> FastAPI:
         return JSONResponse({"status": "ok", "message": "Service is running"}, status_code=200)
 
     @app.post("/reset")
-    def reset(task_id: str = "triage_easy", body: dict | None = Body(default=None)):
+    def reset(task_id: str = "triage_easy"):
         global _env_instance
         try:
-            # Accept task_id from either query param or JSON body.
-            if body and isinstance(body, dict) and isinstance(body.get("task_id"), str) and body["task_id"].strip():
-                task_id = body["task_id"].strip()
             obs = _env_instance.reset(task_id)
             return JSONResponse({"status": "ok", "observation": obs.model_dump()}, status_code=200)
         except Exception as e:
