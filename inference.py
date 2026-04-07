@@ -77,41 +77,30 @@ def _obs_to_prompt(obs: Dict[str, Any]) -> str:
 
 
 def _call_model(client: OpenAI, model: str, prompt: str) -> str:
-    try:
-        resp = client.chat.completions.create(
-            model=model,
-            temperature=0.0,
-            messages=[
-                {"role": "system", "content": _system_prompt()},
-                {"role": "user", "content": prompt},
-            ],
-        )
-        return resp.choices[0].message.content or ""
-    except Exception as e:
-        print(json.dumps({"event": "ERROR", "error": f"API call failed: {str(e)}"}, sort_keys=True))
-        raise
+    resp = client.chat.completions.create(
+        model=model,
+        temperature=0.0,
+        messages=[
+            {"role": "system", "content": _system_prompt()},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    return resp.choices[0].message.content or ""
 
 
 def _parse_action(text: str) -> Action:
-    try:
-        text = text.strip()
-        # Best-effort: if model wraps JSON in markdown fences, strip them deterministically.
-        if text.startswith("```"):
-            text = text.strip("`")
-            text = text.replace("json", "", 1).strip()
-        data = json.loads(text)
-        return TypeAdapter(Action).validate_python(data)
-    except json.JSONDecodeError as e:
-        print(json.dumps({"event": "ERROR", "error": f"JSON parse failed: {str(e)}, text: {text[:100]}"}, sort_keys=True))
-        raise
-    except Exception as e:
-        print(json.dumps({"event": "ERROR", "error": f"Action validation failed: {str(e)}"}, sort_keys=True))
-        raise
+    text = text.strip()
+    # Best-effort: if model wraps JSON in markdown fences, strip them deterministically.
+    if text.startswith("```"):
+        text = text.strip("`")
+        text = text.replace("json", "", 1).strip()
+    data = json.loads(text)
+    return TypeAdapter(Action).validate_python(data)
 
 
 def run_task(client: OpenAI, model: str, task_id: str, seed: int = 7) -> RunResult:
+    _seed_everything(seed)
     try:
-        _seed_everything(seed)
         env = HelpdeskEnv()
         obs = env.reset(task_id=task_id)
 
@@ -139,7 +128,7 @@ def run_task(client: OpenAI, model: str, task_id: str, seed: int = 7) -> RunResu
         return RunResult(task_id=task_id, final_score=final_score or 0.0, steps=steps)
     except Exception as e:
         print(json.dumps({"event": "ERROR", "task_id": task_id, "error": f"Task failed: {str(e)}"}, sort_keys=True))
-        raise
+        return RunResult(task_id=task_id, final_score=0.0, steps=0)
 
 
 def main() -> None:
