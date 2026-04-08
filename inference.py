@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 _SRC_DIR = Path(__file__).resolve().parent / "src"
@@ -13,12 +12,7 @@ if _SRC_DIR.exists():
 from helpdesk_openenv.env import HelpdeskEnv
 from helpdesk_openenv.models import Action
 
-
-@dataclass(frozen=True)
-class RunResult:
-    task_id: str
-    final_score: float
-    steps: int
+TASKS = ("triage_easy", "triage_medium", "triage_hard")
 
 
 def choose_action(task_id: str, step: int) -> Action:
@@ -56,25 +50,45 @@ def choose_action(task_id: str, step: int) -> Action:
     return Action(submit=True)
 
 
-def run_task(task_id: str) -> RunResult:
+def emit_start(task_id: str) -> None:
+    print(f"[START] task={task_id}", flush=True)
+
+
+def emit_step(task_id: str, step: int, reward: float) -> None:
+    print(f"[STEP] task={task_id} step={step} reward={reward:.3f}", flush=True)
+
+
+def emit_end(task_id: str, score: float, steps: int) -> None:
+    print(f"[END] task={task_id} score={score:.3f} steps={steps}", flush=True)
+
+
+def run_task(task_id: str) -> tuple[float, int]:
+    emit_start(task_id)
+
     try:
         env = HelpdeskEnv()
         env.reset(task_id=task_id)
         steps = 0
 
-        while True:
+        while steps < 10:
             action = choose_action(task_id, steps)
             _, rew = env.step(action)
             steps += 1
 
+            emit_step(task_id, steps, float(rew.reward))
+
             if rew.done:
                 final_score = float(rew.info.get("final_score", "0.0"))
-                return RunResult(task_id=task_id, final_score=final_score, steps=steps)
+                emit_end(task_id, final_score, steps)
+                return final_score, steps
 
-            if steps > 10:
-                _, rew = env.step(Action(submit=True))
-                final_score = float(rew.info.get("final_score", "0.0"))
-                return RunResult(task_id=task_id, final_score=final_score, steps=steps)
+        # Fallback: force submit if somehow not done yet
+        _, rew = env.step(Action(submit=True))
+        steps += 1
+        emit_step(task_id, steps, float(rew.reward))
+        final_score = float(rew.info.get("final_score", "0.0"))
+        emit_end(task_id, final_score, steps)
+        return final_score, steps
 
     except Exception as e:
         print(
@@ -83,38 +97,21 @@ def run_task(task_id: str) -> RunResult:
                 sort_keys=True,
             ),
             file=sys.stderr,
+            flush=True,
         )
-        return RunResult(task_id=task_id, final_score=0.0, steps=0)
+        emit_end(task_id, 0.0, 0)
+        return 0.0, 0
 
 
 def main() -> None:
     try:
-        tasks = ["triage_easy", "triage_medium", "triage_hard"]
-        results = [run_task(task_id) for task_id in tasks]
-
-        mean_score = (
-            sum(r.final_score for r in results) / len(results)
-            if results else 0.0
-        )
-
-        out = {
-            "results": [
-                {
-                    "task_id": r.task_id,
-                    "final_score": r.final_score,
-                    "steps": r.steps,
-                }
-                for r in results
-            ],
-            "mean_score": mean_score,
-        }
-
-        print(json.dumps(out, indent=2, sort_keys=True))
-
+        for task_id in TASKS:
+            run_task(task_id)
     except Exception as e:
         print(
             json.dumps({"event": "FATAL_ERROR", "error": str(e)}, sort_keys=True),
             file=sys.stderr,
+            flush=True,
         )
         sys.exit(1)
 
