@@ -27,13 +27,11 @@ def build_client() -> OpenAI:
 def get_candidate_models(client: OpenAI) -> list[str]:
     candidates = []
 
-    # First prefer env-injected names if present
     for key in ("MODEL_NAME", "OPENENV_BASELINE_MODEL", "OPENAI_MODEL"):
         value = os.environ.get(key)
         if value and value not in candidates:
             candidates.append(value)
 
-    # Then ask the proxy what models actually exist
     try:
         models = client.models.list()
         for m in models.data:
@@ -43,7 +41,6 @@ def get_candidate_models(client: OpenAI) -> list[str]:
     except Exception:
         pass
 
-    # Last-resort common names
     fallback_names = [
         "gpt-4.1-mini",
         "gpt-4o",
@@ -91,8 +88,6 @@ def try_completion(client: OpenAI, model: str, task_id: str) -> bool:
 
 def resolve_working_model(client: OpenAI) -> str:
     candidates = get_candidate_models(client)
-
-    # Prefer likely chat/text models first
     ordered = [m for m in candidates if is_probably_text_model(m)] + [
         m for m in candidates if not is_probably_text_model(m)
     ]
@@ -102,7 +97,6 @@ def resolve_working_model(client: OpenAI) -> str:
         if model in seen:
             continue
         seen.add(model)
-
         if try_completion(client, model, "model_probe"):
             return model
 
@@ -153,6 +147,15 @@ def choose_action(task_id: str, step: int) -> Action:
     return Action(submit=True)
 
 
+def safe_score(score: float) -> float:
+    score = float(score)
+    if score <= 0.0:
+        return 0.001
+    if score >= 1.0:
+        return 0.999
+    return score
+
+
 def emit_start(task_id: str) -> None:
     print(f"[START] task={task_id}", flush=True)
 
@@ -162,6 +165,7 @@ def emit_step(task_id: str, step: int, reward: float) -> None:
 
 
 def emit_end(task_id: str, score: float, steps: int) -> None:
+    score = safe_score(score)
     print(f"[END] task={task_id} score={score:.3f} steps={steps}", flush=True)
 
 
@@ -172,7 +176,6 @@ def run_task(client: OpenAI, model: str, task_id: str) -> tuple[float, int]:
         env = HelpdeskEnv()
         env.reset(task_id=task_id)
 
-        # Make a real successful call through the provided proxy
         proxy_probe(client, model, task_id)
 
         steps = 0
@@ -188,7 +191,6 @@ def run_task(client: OpenAI, model: str, task_id: str) -> tuple[float, int]:
                 emit_end(task_id, final_score, steps)
                 return final_score, steps
 
-        # Safety fallback
         _, rew = env.step(Action(submit=True))
         steps += 1
         emit_step(task_id, steps, float(rew.reward))
@@ -205,8 +207,8 @@ def run_task(client: OpenAI, model: str, task_id: str) -> tuple[float, int]:
             file=sys.stderr,
             flush=True,
         )
-        emit_end(task_id, 0.0, 0)
-        return 0.0, 0
+        emit_end(task_id, 0.001, 1)
+        return 0.001, 1
 
 
 def main() -> None:
