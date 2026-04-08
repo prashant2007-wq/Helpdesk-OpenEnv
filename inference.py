@@ -5,9 +5,6 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
-
-import numpy as np
 
 _SRC_DIR = Path(__file__).resolve().parent / "src"
 if _SRC_DIR.exists():
@@ -34,7 +31,10 @@ def choose_action(task_id: str, step: int) -> Action:
 
     if task_id == "triage_medium":
         return Action(
-            ask_clarifying_question="What time did this happen, did you approve any MFA prompt, and which device were you using?",
+            ask_clarifying_question=(
+                "What time did this happen, did you approve any MFA prompt, "
+                "and which device were you using?"
+            ),
             set_priority="p1",
             route_to_team="security",
             submit=True,
@@ -59,12 +59,12 @@ def choose_action(task_id: str, step: int) -> Action:
 def run_task(task_id: str) -> RunResult:
     try:
         env = HelpdeskEnv()
-        obs = env.reset(task_id=task_id)
+        env.reset(task_id=task_id)
         steps = 0
 
         while True:
             action = choose_action(task_id, steps)
-            obs, rew = env.step(action)
+            _, rew = env.step(action)
             steps += 1
 
             if rew.done:
@@ -72,7 +72,7 @@ def run_task(task_id: str) -> RunResult:
                 return RunResult(task_id=task_id, final_score=final_score, steps=steps)
 
             if steps > 10:
-                obs, rew = env.step(Action(submit=True))
+                _, rew = env.step(Action(submit=True))
                 final_score = float(rew.info.get("final_score", "0.0"))
                 return RunResult(task_id=task_id, final_score=final_score, steps=steps)
 
@@ -92,6 +92,11 @@ def main() -> None:
         tasks = ["triage_easy", "triage_medium", "triage_hard"]
         results = [run_task(task_id) for task_id in tasks]
 
+        mean_score = (
+            sum(r.final_score for r in results) / len(results)
+            if results else 0.0
+        )
+
         out = {
             "results": [
                 {
@@ -101,7 +106,7 @@ def main() -> None:
                 }
                 for r in results
             ],
-            "mean_score": float(np.mean([r.final_score for r in results])),
+            "mean_score": mean_score,
         }
 
         print(json.dumps(out, indent=2, sort_keys=True))
